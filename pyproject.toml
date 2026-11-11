@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ding"
+version = "1.0.0"
+description = "Classic ping you can also hear: a high beep on send, a low blip on reply, the gap is the RTT"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Sergey Pankov" }]
+keywords = ["ping", "icmp", "audio", "sound", "beep", "network", "latency"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = ["numpy>=1.24", "sounddevice>=0.4.6"]
+
+[project.scripts]
+ding = "ding:main"
+
+[project.urls]
+Homepage = "https://github.com/trapwalker/ding"
+Repository = "https://github.com/trapwalker/ding"
+Issues = "https://github.com/trapwalker/ding/issues"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["ding.py"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["ding.py", "README.md", "LICENSE", "pyproject.toml"]
