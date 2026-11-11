@@ -1,9 +1,9 @@
-# ding
+# pingbeep
 
 > **English TL;DR:** classic `ping` you can also *hear* — a high «пик» beep on
 > every packet sent, a low «пук» on every reply. The gap between them is your
 > RTT, a lost packet is a «пик» without its «пук». CLI-compatible with the
-> classic `ping`. Run: `uv run ding.py ya.ru` (or `pipx install ding`).
+> classic `ping`. Run: `uv run pingbeep.py ya.ru` (or `pipx install pingbeep`).
 
 Классический `ping`, который ещё и **слышно**: каждый отправленный пакет —
 «пик», каждый ответ — «пук». Пауза между ними = RTT, потеря пакета — «пик»
@@ -12,8 +12,8 @@
 ## Запуск
 
 ```bash
-uv run ding.py [параметры] host        # deps подтягиваются из PEP-723 шапки
-uv run ding.py ya.ru -i 0.5
+uv run pingbeep.py [параметры] host        # deps подтягиваются из PEP-723 шапки
+uv run pingbeep.py ya.ru -i 0.5
 ```
 
 Зависимости: `numpy`, `sounddevice`. Python ≥ 3.10. Права root не нужны
@@ -26,7 +26,7 @@ CLI совместим с BSD ping на macOS и iputils ping на Linux: getopt
 (кластеризация `-qc5`, присоединённые значения `-i0.5`), long-опции GNU,
 пер-платформенная семантика `-t`/`-W`/`-A` — как у «родного» ping каждой ОС.
 Вывод в stdout — в формате ping своей платформы (BSD-стиль на macOS,
-iputils-стиль на Linux); служебные сообщения ding идут в stderr.
+iputils-стиль на Linux); служебные сообщения pingbeep идут в stderr.
 
 | Флаг | Значение | Поддержка |
 |---|---|---|
@@ -53,21 +53,21 @@ iputils-стиль на Linux); служебные сообщения ding ид�
 нет, `2` — ошибка запуска (нераспознанный флаг, резолв, сокет). Работает и
 `SIGINFO` (Ctrl+T на macOS): промежуточная статистика в stderr.
 
-Кластеризация и long-опции: `ping -qc5 ya.ru` == `ding -qc5 ya.ru` ==
-`ding --quiet --count 5 ya.ru`.
+Кластеризация и long-опции: `ping -qc5 ya.ru` == `pingbeep -qc5 ya.ru` ==
+`pingbeep --quiet --count 5 ya.ru`.
 
 ## Что не отключается
 
-Звук. Это суть ding: «пи́к»/«пук» всегда, любыми флагами. `-q` глушит только
+Звук. Это суть pingbeep: «пи́к»/«пук» всегда, любыми флагами. `-q` глушит только
 текстовую выдачу; звук не пишется в stdout, поэтому парсеры вывода ping
 работают как обычно.
 
 ## Примеры
 
 ```bash
-uv run ding.py ya.ru                 # по умолчанию: -i 1, -s 56
-uv run ding.py 1.1.1.1 -i 0.3        # джиттер слышнее
-uv run ding.py -f -c 50 ya.ru        # шторм пи́ков на потерях
-uv run ding.py -6 ::1                # IPv6
-uv run ding.py ya.ru -v              # подробности в stderr
+uv run pingbeep.py ya.ru                 # по умолчанию: -i 1, -s 56
+uv run pingbeep.py 1.1.1.1 -i 0.3        # джиттер слышнее
+uv run pingbeep.py -f -c 50 ya.ru        # шторм пи́ков на потерях
+uv run pingbeep.py -6 ::1                # IPv6
+uv run pingbeep.py ya.ru -v              # подробности в stderr
 ```

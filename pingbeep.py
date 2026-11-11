@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["numpy>=1.24", "sounddevice>=0.4.6"]
 # ///
-"""ding — классический ping, который ещё и слышно.
+"""pingbeep — классический ping, который ещё и слышно.
 
 CLI-флаги совместимы с классическим ping: getopt-стиль (кластеризация -qc5,
 присоединённые значения -c5), семантика BSD ping на macOS (iputils на Linux),
@@ -11,7 +11,7 @@ GNU long-опции. Вывод — в формате ping своей платф
 0 — был хотя бы один ответ, 1 — ответов нет, 2 — ошибка запуска.
 
 Туда — «пик», обратно — «пук»; пауза = RTT, потеря = «пик» без «пука».
-Звук в ding есть всегда — флагами он не отключается (звук не пишется
+Звук в pingbeep есть всегда — флагами он не отключается (звук не пишется
 в stdout и не мешает парсингу вывода).
 """
 
@@ -68,7 +68,7 @@ class Mixer:
                 blocksize=0, latency="low", callback=self._cb,
             )
         except OSError as e:
-            sys.exit(f"ding: не удалось открыть аудиовыход: {e}")
+            sys.exit(f"pingbeep: не удалось открыть аудиовыход: {e}")
         self.stream.start()
 
     def play(self, samples: np.ndarray) -> None:
@@ -128,7 +128,7 @@ def open_icmp(v6: bool):
         except OSError:
             continue
     sys.exit(
-        "ding: не удалось открыть ICMP-сокет. Попробуй sudo, а на Linux:\n"
+        "pingbeep: не удалось открыть ICMP-сокет. Попробуй sudo, а на Linux:\n"
         '  sysctl -w net.ipv4.ping_group_range="0   2147483647"'
     )
 
@@ -168,7 +168,7 @@ ECHO_REP = {"4": 0, "6": 129}
 def usage(code: int) -> None:
     t_desc = "timeout, s (BSD-style)" if IS_MAC else "ttl (iputils-style)"
     w_desc = "waittime, ms (BSD-style)" if IS_MAC else "timeout, s (iputils-style)"
-    print(f"""Usage: ding [options] host
+    print(f"""Usage: pingbeep [options] host
 
 Options:
   -c count        send count packets, then exit (0 = forever)
@@ -196,7 +196,7 @@ Options:
   -4 / -6         force IPv4 / IPv6
   -h --help       this text
 
-Sound (the whole point of ding): every send = «пик», every reply = «пук».
+Sound (the whole point of pingbeep): every send = «пик», every reply = «пук».
 The gap between them is the RTT, losses are «пик» with no «пук».""")
     sys.exit(code)
 
@@ -213,7 +213,7 @@ def parse_args(argv: list[str]) -> SimpleNamespace:
     warns: list[str] = []
 
     def die(msg: str, code: int = 2) -> None:
-        print(f"ding: {msg}", file=sys.stderr)
+        print(f"pingbeep: {msg}", file=sys.stderr)
         sys.exit(code)
 
     def _int(v: str, flag: str) -> int:
@@ -395,7 +395,7 @@ def parse_args(argv: list[str]) -> SimpleNamespace:
             except OSError:
                 cfg.iface_name = cfg.iface_raw
     for w in warns:
-        print(f"ding: {w}", file=sys.stderr)
+        print(f"pingbeep: {w}", file=sys.stderr)
     return cfg
 
 
@@ -492,13 +492,13 @@ def main() -> None:
     try:
         sockaddr = socket.getaddrinfo(cfg.host, None, cfg.family)[0][4]
     except OSError as e:
-        print(f"ding: cannot resolve {cfg.host!r}: {e}", file=sys.stderr)
+        print(f"pingbeep: cannot resolve {cfg.host!r}: {e}", file=sys.stderr)
         sys.exit(2)
     ip = sockaddr[0].split("%")[0]
 
     sock, warns = build_socket(cfg, v6)
     for w in warns:
-        print(f"ding: {w}", file=sys.stderr)
+        print(f"pingbeep: {w}", file=sys.stderr)
 
     ident = random.randrange(1, 0x10000)
     mixer = Mixer()
@@ -521,12 +521,12 @@ def main() -> None:
     else:       # iputils-заголовок
         print(f"PING {cfg.host} ({ip}) {cfg.size}({cfg.size + 28}) bytes of data.",
               flush=True)
-    print("ding: «пик» туда, «пук» обратно; пауза = задержка. Ctrl+C — итоги.",
+    print("pingbeep: «пик» туда, «пук» обратно; пауза = задержка. Ctrl+C — итоги.",
           file=sys.stderr, flush=True)
 
     if hasattr(signal, "SIGINFO"):  # Ctrl+T на macOS: промежуточная статистика
         def _info(_sig, _frm):
-            print(f"ding: {sent} sent, {received} received, "
+            print(f"pingbeep: {sent} sent, {received} received, "
                   f"{len(pending)} in flight", file=sys.stderr, flush=True)
         try:
             signal.signal(signal.SIGINFO, _info)
@@ -545,7 +545,7 @@ def main() -> None:
         try:
             sock.sendto(build_echo(fam, ident, seq_next, make_payload()), sockaddr)
         except OSError as e:
-            print(f"ding: sendto: {e}", file=sys.stderr, flush=True)
+            print(f"pingbeep: sendto: {e}", file=sys.stderr, flush=True)
             return
         sent += 1
         now2 = time.monotonic()
@@ -569,7 +569,7 @@ def main() -> None:
         src_ip = src[0].split("%")[0]
         if mid != ident or src_ip != ip:
             if cfg.verbose:
-                print(f"ding: foreign ICMP type={mtype} code={mcode} from {src_ip}",
+                print(f"pingbeep: foreign ICMP type={mtype} code={mcode} from {src_ip}",
                       file=sys.stderr, flush=True)
             return
         if mtype == ECHO_REP[fam]:  # эхо-ответ
@@ -577,7 +577,7 @@ def main() -> None:
             t0 = e[0] if e is not None else expired.get(mseq)
             if t0 is None:
                 if cfg.verbose:
-                    print(f"ding: unexpected reply seq={mseq}", file=sys.stderr, flush=True)
+                    print(f"pingbeep: unexpected reply seq={mseq}", file=sys.stderr, flush=True)
                 return
             rtt_ms = (time.perf_counter() - t0) * 1000.0
             received += 1
@@ -601,7 +601,7 @@ def main() -> None:
                     if not cfg.quiet:
                         print(line, flush=True)
             elif cfg.verbose:
-                print(f"ding: late reply seq={mseq} (counted, not printed)",
+                print(f"pingbeep: late reply seq={mseq} (counted, not printed)",
                       file=sys.stderr, flush=True)
             if cfg.onefire:
                 stop = True
@@ -613,7 +613,7 @@ def main() -> None:
                     print(f"From {ip}: icmp_seq={ref[1]} "
                           f"{ERR_NAMES[fam][mtype]}", flush=True)
         elif cfg.verbose:
-            print(f"ding: ICMP type={mtype} code={mcode} from {ip}",
+            print(f"pingbeep: ICMP type={mtype} code={mcode} from {ip}",
                   file=sys.stderr, flush=True)
 
     def drain() -> None:
