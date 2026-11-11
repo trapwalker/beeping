@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pingbeep"
+name = "beeping"
 version = "1.0.0"
 description = "Classic ping you can also hear: a high beep on send, a low blip on reply, the gap is the RTT"
 readme = "README.md"
@@ -22,15 +22,15 @@ classifiers = [
 dependencies = ["numpy>=1.24", "sounddevice>=0.4.6"]
 
 [project.scripts]
-pingbeep = "pingbeep:main"
+beeping = "beeping:main"
 
 [project.urls]
-Homepage = "https://github.com/trapwalker/pingbeep"
-Repository = "https://github.com/trapwalker/pingbeep"
-Issues = "https://github.com/trapwalker/pingbeep/issues"
+Homepage = "https://github.com/trapwalker/beeping"
+Repository = "https://github.com/trapwalker/beeping"
+Issues = "https://github.com/trapwalker/beeping/issues"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["pingbeep.py"]
+only-include = ["beeping.py"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["pingbeep.py", "README.md", "LICENSE", "pyproject.toml"]
+only-include = ["beeping.py", "README.md", "LICENSE", "pyproject.toml"]
