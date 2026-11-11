@@ -17,21 +17,29 @@ GNU long-опции. Вывод — в формате ping своей платф
 
 from __future__ import annotations
 
+import atexit
+import io
+import math
+import os
 import random
 import select
+import shutil
 import signal
 import socket
 import struct
+import subprocess
 import sys
+import tempfile
 import threading
 import time
+import wave
 from types import SimpleNamespace
 
 try:
     import numpy as np
     import sounddevice as sd
-except ImportError as e:  # запущено без uv
-    sys.exit(f"не хватает зависимостей ({e}) — запускай через uv: uv run {sys.argv[0]}")
+except ImportError:  # звук пойдёт через фоллбэки (см. make_mixer)
+    np = sd = None
 
 SR = 44100
 IS_MAC = sys.platform == "darwin"
@@ -50,26 +58,28 @@ def tone(f0: float, f1: float, dur: float, vol: float) -> np.ndarray:
     return (np.sin(phase) * env * vol).astype(np.float32)
 
 
-# «пик» — короткий высокий тон; «пук» — низкий, съезжающий вниз («бульк»)
-PICK = tone(1568, 1568, 0.050, 0.40)
-PUK = tone(700, 320, 0.110, 0.55)
-
-
 class Mixer:
-    """Одновременное воспроизведение налагающихся тонов без обрезания."""
+    """Уровень 1: одновременное воспроизведение тонов без обрезания."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._pos = 0                  # сколько сэмплов уже отдано в колонки
         self._events: list[list] = []  # [start, samples]
-        try:
-            self.stream = sd.OutputStream(
-                samplerate=SR, channels=1, dtype="float32",
-                blocksize=0, latency="low", callback=self._cb,
-            )
-        except OSError as e:
-            sys.exit(f"beeping: не удалось открыть аудиовыход: {e}")
+        # «пик» — короткий высокий тон; «пук» — низкий, съезжающий вниз («бульк»)
+        self._pick = tone(1568, 1568, 0.050, 0.40)
+        self._puk = tone(700, 320, 0.110, 0.55)
+        self.stream = sd.OutputStream(
+            samplerate=SR, channels=1, dtype="float32",
+            blocksize=0, latency="low", callback=self._cb,
+        )
         self.stream.start()
+        print("beeping: звук через sounddevice (низкий латенс)", file=sys.stderr)
+
+    def send(self) -> None:                  # «пик»
+        self.play(self._pick)
+
+    def reply(self) -> None:                 # «пук»
+        self.play(self._puk)
 
     def play(self, samples: np.ndarray) -> None:
         with self._lock:
@@ -95,6 +105,107 @@ class Mixer:
             np.clip(out, -1.0, 1.0, out=out)
         except Exception:
             pass  # звук не должен ронять пинг
+
+
+def _tone_wav(f0: float, f1: float, dur: float, vol: float) -> bytes:
+    """Тот же тон, но без numpy: 16-бит моно WAV в памяти."""
+    sr = 44100
+    n = int(dur * sr)
+    k = max(1, int(0.006 * sr))
+    frames = bytearray()
+    phase = 0.0
+    for i in range(n):
+        f = f0 + (f1 - f0) * i / n
+        phase += 2.0 * math.pi * f / sr
+        if i < k:
+            env = i / k
+        elif i > n - k:
+            env = (n - i) / k
+        else:
+            env = 1.0
+        s = math.sin(phase) * env * vol
+        frames += struct.pack("<h", int(max(-1.0, min(1.0, s)) * 32767))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
+class SubMixer:
+    """Уровень 2: временные WAV-файлы + системный плеер (paplay/afplay/…).
+    Чуть больший латенс (спавн процесса), зато без внешних библиотек."""
+
+    def __init__(self, player: str) -> None:
+        self._player = player
+        self._dir = tempfile.mkdtemp(prefix="beeping-")
+        atexit.register(shutil.rmtree, self._dir, True)
+        self._pick = os.path.join(self._dir, "pick.wav")
+        self._puk = os.path.join(self._dir, "puk.wav")
+        with open(self._pick, "wb") as f:
+            f.write(_tone_wav(1568, 1568, 0.050, 0.40))
+        with open(self._puk, "wb") as f:
+            f.write(_tone_wav(700, 320, 0.110, 0.55))
+        print(f"beeping: звук через {player} (латенс выше, чем у sounddevice)",
+              file=sys.stderr)
+
+    def _play(self, path: str) -> None:
+        subprocess.Popen([self._player, path],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def send(self) -> None:
+        self._play(self._pick)
+
+    def reply(self) -> None:
+        self._play(self._puk)
+
+
+class BelMixer:
+    """Уровень 3, последний фоллбэк: терминальный звонок ``\\a``.
+    Питча нет, но пауза «пик → пук» (= RTT) остаётся на слух."""
+
+    def __init__(self, why: str) -> None:
+        print(f"beeping: звук только через терминальный звонок — {why}.\n"
+              "beeping: предупреждение: терминал может глушить звонок по умолчанию",
+              file=sys.stderr)
+
+    def send(self) -> None:
+        print("\a", end="", file=sys.stderr)
+
+    def reply(self) -> None:
+        print("\a", end="", file=sys.stderr)
+
+
+def make_mixer():
+    """Выбор звукового движка: sounddevice → системный плеер → BEL.
+    Перекрывается переменной окружения BEEPING_PLAYER=device|wav|bel."""
+    forced = os.environ.get("BEEPING_PLAYER", "").strip().lower()
+    port_err = None
+    if forced not in ("wav", "bel"):
+        if np is not None and sd is not None:
+            try:
+                return Mixer()
+            except Exception as e:      # нет PortAudio/устройства — идём ниже
+                port_err = str(e)
+        else:
+            port_err = "numpy/sounddevice не установлены"
+    if forced != "bel":
+        players = ["afplay"] if IS_MAC else ["paplay", "pw-play", "aplay", "play"]
+        for p in players:
+            found = shutil.which(p)
+            if found:
+                try:
+                    return SubMixer(found)
+                except OSError:
+                    continue  # не смог записать tmp-файлы — следующая попытка
+    why = port_err or ("нет звукового устройства" if np is not None
+                       else "numpy/sounddevice не установлены")
+    hint = ""
+    if not IS_MAC and port_err and "portaudio" in port_err.lower():
+        hint = "; для полноценного звука: sudo apt install libportaudio2"
+    return BelMixer(why + hint)
 
 
 # --- ICMP / ICMPv6 ------------------------------------------------------
@@ -501,7 +612,7 @@ def main() -> None:
         print(f"beeping: {w}", file=sys.stderr)
 
     ident = random.randrange(1, 0x10000)
-    mixer = Mixer()
+    mixer = make_mixer()
 
     sent = received = 0
     rtts: list[float] = []
@@ -548,6 +659,7 @@ def main() -> None:
             print(f"beeping: sendto: {e}", file=sys.stderr, flush=True)
             return
         sent += 1
+        mixer.send()  # «пик» в момент отправки
         now2 = time.monotonic()
         if cfg.wait is not None:
             timer = now2 + cfg.wait
@@ -582,7 +694,7 @@ def main() -> None:
             rtt_ms = (time.perf_counter() - t0) * 1000.0
             received += 1
             rtts.append(rtt_ms)
-            mixer.play(PUK)
+            mixer.reply()
             if cfg.wait is None or rtt_ms <= cfg.wait * 1000.0:
                 ttl = anc_ttl(anc)
                 if cfg.flood:
