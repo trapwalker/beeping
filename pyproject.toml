@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "beeping"
-version = "1.1.0"
+version = "1.2.0"
 description = "Classic ping you can also hear: a high beep on send, a low blip on reply, the gap is the RTT"
 readme = "README.md"
 requires-python = ">=3.10"

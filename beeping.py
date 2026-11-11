@@ -37,8 +37,8 @@ from types import SimpleNamespace
 
 try:
     import numpy as np
-    import sounddevice as sd
-except ImportError:  # звук пойдёт через фоллбэки (см. make_mixer)
+    import sounddevice as sd  # без libportaudio кидает OSError ПРИ ИМПОРТЕ
+except (ImportError, OSError):  # звук пойдёт через фоллбэки (см. make_mixer)
     np = sd = None
 
 SR = 44100
@@ -172,16 +172,25 @@ class BelMixer:
               file=sys.stderr)
 
     def send(self) -> None:
-        print("\a", end="", file=sys.stderr)
+        print("\a", end="", file=sys.stderr, flush=True)
 
     def reply(self) -> None:
-        print("\a", end="", file=sys.stderr)
+        print("\a\a", end="", file=sys.stderr, flush=True)
 
 
-def make_mixer():
+def make_mixer(forced_sound: str | None = None):
     """Выбор звукового движка: sounddevice → системный плеер → BEL.
-    Перекрывается переменной окружения BEEPING_PLAYER=device|wav|bel."""
-    forced = os.environ.get("BEEPING_PLAYER", "").strip().lower()
+    Задаётся --sound device|wav|bel (или BEEPING_PLAYER), иначе авто."""
+    forced = (forced_sound or "").strip().lower()
+    aliases = {"device": "device", "sd": "device", "sounddevice": "device",
+               "wav": "wav", "player": "wav", "paplay": "wav",
+               "afplay": "wav", "aplay": "wav", "play": "wav",
+               "bel": "bel", "bell": "bel", "terminal": "bel"}
+    forced = aliases.get(forced, forced)
+    if forced not in ("device", "wav", "bel", "", None):
+        print(f"beeping: неизвестный режим звука {forced_sound!r} "
+              f"(device|wav|bel) — выбираю автоматически", file=sys.stderr)
+        forced = None
     port_err = None
     if forced not in ("wav", "bel"):
         if np is not None and sd is not None:
@@ -200,11 +209,12 @@ def make_mixer():
                     return SubMixer(found)
                 except OSError:
                     continue  # не смог записать tmp-файлы — следующая попытка
-    why = port_err or ("нет звукового устройства" if np is not None
-                       else "numpy/sounddevice не установлены")
+    why = port_err or "системный аудио-плеер (paplay/afplay/aplay) не найден"
     hint = ""
     if not IS_MAC and port_err and "portaudio" in port_err.lower():
         hint = "; для полноценного звука: sudo apt install libportaudio2"
+    if forced == "bel":
+        return BelMixer("выбран режим --sound bel")
     return BelMixer(why + hint)
 
 
@@ -303,6 +313,9 @@ Options:
   -Q tos          set TOS/DSCP (int or 0x..)
   -r              bypass routing tables
   -b              allow pinging broadcast
+  --sound MODE    sound engine: device = sounddevice (Linux needs libportaudio2),
+                  wav = temp WAV via paplay/pw-play/aplay/afplay,
+                  bel = terminal BEL (no pitch, the gap is the RTT)
   --ttl n         IP TTL (any platform)
   -4 / -6         force IPv4 / IPv6
   -h --help       this text
@@ -320,6 +333,7 @@ def parse_args(argv: list[str]) -> SimpleNamespace:
         onefire=False, broadcast=False, dontroute=False, report_out=False,
         pattern_bytes=None, source=None, iface_name=None,
         tos=None, ttl=None, family=socket.AF_UNSPEC,
+        sound=os.environ.get("BEEPING_PLAYER") or None,
     )
     warns: list[str] = []
 
@@ -435,6 +449,13 @@ def parse_args(argv: list[str]) -> SimpleNamespace:
                         die("--ttl requires an argument")
                     val = args[i]
                 cfg.ttl = _int(val, "--ttl")
+            elif key == "sound":
+                if not val:
+                    i += 1
+                    if i >= len(args):
+                        die("--sound requires an argument (device|wav|bel)")
+                    val = args[i]
+                cfg.sound = val
             elif key in LONG_VALUE:
                 if not val:
                     i += 1
@@ -505,6 +526,15 @@ def parse_args(argv: list[str]) -> SimpleNamespace:
                 cfg.source = cfg.iface_raw  # IPv4-литерал
             except OSError:
                 cfg.iface_name = cfg.iface_raw
+    if cfg.sound is not None:
+        raw = cfg.sound.strip().lower()
+        aliases = {"device": "device", "sd": "device", "sounddevice": "device",
+                   "wav": "wav", "player": "wav", "paplay": "wav",
+                   "afplay": "wav", "aplay": "wav", "play": "wav",
+                   "bel": "bel", "bell": "bel", "terminal": "bel"}
+        if raw not in aliases:
+            die(f"unknown --sound value: {cfg.sound!r} (device|wav|bel)")
+        cfg.sound = aliases[raw]
     for w in warns:
         print(f"beeping: {w}", file=sys.stderr)
     return cfg
@@ -612,7 +642,7 @@ def main() -> None:
         print(f"beeping: {w}", file=sys.stderr)
 
     ident = random.randrange(1, 0x10000)
-    mixer = make_mixer()
+    mixer = make_mixer(cfg.sound)
 
     sent = received = 0
     rtts: list[float] = []
