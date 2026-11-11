@@ -3,7 +3,8 @@
 > **English TL;DR:** classic `ping` you can also *hear* — a high «пик» beep on
 > every packet sent, a low «пук» on every reply. The gap between them is your
 > RTT, a lost packet is a «пик» without its «пук». CLI-compatible with the
-> classic `ping`. Run: `uv run beeping.py ya.ru` (or `pipx install beeping`).
+> classic `ping`. Run: `uvx beeping ya.ru` (from PyPI), `uv run beeping.py ya.ru`
+> or `uv tool install beeping` / `pipx install beeping`.
 
 Классический `ping`, который ещё и **слышно**: каждый отправленный пакет —
 «пик», каждый ответ — «пук». Пауза между ними = RTT, потеря пакета — «пик»
